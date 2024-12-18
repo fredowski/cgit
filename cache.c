@@ -21,10 +21,12 @@
 #endif
 
 #define CACHE_BUFSIZE (1024 * 4)
+#define WHITESPACEMAXLEN 35
 
 struct cache_slot {
 	const char *key;
 	size_t keylen;
+	size_t whitespacelen;
 	int ttl;
 	cache_fill_fn fn;
 	int cache_fd;
@@ -62,6 +64,10 @@ static int open_slot(struct cache_slot *slot)
 	if (bufz)
 		bufkeylen = bufz - slot->buf;
 
+	slot->whitespacelen = 0;
+	while (*++bufz == ' ' && slot->whitespacelen < WHITESPACEMAXLEN)
+		slot->whitespacelen++;
+
 	if (slot->key)
 		slot->match = bufkeylen == slot->keylen &&
 		    !memcmp(slot->key, slot->buf, bufkeylen + 1);
@@ -90,7 +96,7 @@ static int print_slot(struct cache_slot *slot)
 	off_t size;
 #endif
 
-	off = slot->keylen + 1;
+	off = slot->keylen + 1 + slot->whitespacelen;
 
 #ifdef HAVE_LINUX_SENDFILE
 	size = slot->cache_st.st_size;
@@ -187,6 +193,11 @@ static int lock_slot(struct cache_slot *slot)
 	}
 	if (xwrite(slot->lock_fd, slot->key, slot->keylen + 1) < 0)
 		return errno;
+	/* Insert Whitespace for adding "Content-Length: xxxx" later */
+	for(int i = 0;i < WHITESPACEMAXLEN;i++)
+		if (xwrite(slot->lock_fd, " ", 1) != 1)
+			return errno;
+
 	return 0;
 }
 
@@ -216,6 +227,40 @@ static int unlock_slot(struct cache_slot *slot, int replace_old_slot)
 	return 0;
 }
 
+/* Fill Content-Length field and adapt whitespacelen */
+static int fill_content_length(struct cache_slot *slot)
+{
+	char *headerend;
+	size_t headerlen, bodylen, off;
+	struct strbuf buf = STRBUF_INIT;
+
+	if (lseek(slot->lock_fd, slot->keylen+1, SEEK_SET) != slot->keylen+1)
+		return errno;
+	slot->bufsize = xread(slot->lock_fd, slot->buf, sizeof(slot->buf));
+	if (slot->bufsize < 0)
+		return errno;
+	if (strstr(slot->buf,"Content-Length:")) {
+		/* Content-Length: already in header */
+		slot->whitespacelen = WHITESPACEMAXLEN;
+		return 0;
+	}
+	/* Search the end of the html header marked by empty newline */
+	headerend = strstr(slot->buf,"\n\n");
+	if (headerend == NULL)
+		return 0;
+	headerlen = headerend - slot->buf + 2;
+	bodylen = slot->cache_st.st_size - headerlen - slot->keylen - 1;
+	strbuf_addf(&buf, "Content-Length: %zd\r\n", bodylen);
+	slot->whitespacelen = WHITESPACEMAXLEN - buf.len;
+	off = slot->keylen + slot->whitespacelen + 1;
+	if (lseek(slot->lock_fd, off, SEEK_SET) != off)
+		return errno;
+	if (xwrite(slot->lock_fd, buf.buf, buf.len) < 0)
+		return errno;
+	strbuf_release(&buf);
+	return 0;
+}
+
 /* Generate the content for the current cache slot by redirecting
  * stdout to the lock-fd and invoking the callback function
  */
@@ -239,6 +284,10 @@ static int fill_slot(struct cache_slot *slot)
 
 	/* update stat info */
 	if (fstat(slot->lock_fd, &slot->cache_st))
+		return errno;
+
+	/* fill content-length header field */
+	if (fill_content_length(slot))
 		return errno;
 
 	return 0;
