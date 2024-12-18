@@ -729,26 +729,26 @@ void cgit_print_http_headers(void)
 		return;
 
 	if (ctx.page.status)
-		htmlf("Status: %d %s\n", ctx.page.status, ctx.page.statusmsg);
+		htmlf("Status: %d %s\r\n", ctx.page.status, ctx.page.statusmsg);
 	if (ctx.page.mimetype && ctx.page.charset)
-		htmlf("Content-Type: %s; charset=%s\n", ctx.page.mimetype,
+		htmlf("Content-Type: %s; charset=%s\r\n", ctx.page.mimetype,
 		      ctx.page.charset);
 	else if (ctx.page.mimetype)
-		htmlf("Content-Type: %s\n", ctx.page.mimetype);
+		htmlf("Content-Type: %s\r\n", ctx.page.mimetype);
 	if (ctx.page.size)
-		htmlf("Content-Length: %zd\n", ctx.page.size);
+		htmlf("Content-Length: %zd\r\n", ctx.page.size);
 	if (ctx.page.filename) {
 		html("Content-Disposition: inline; filename=\"");
 		html_header_arg_in_quotes(ctx.page.filename);
-		html("\"\n");
+		html("\"\r\n");
 	}
 	if (!ctx.env.authenticated)
-		html("Cache-Control: no-cache, no-store\n");
-	htmlf("Last-Modified: %s\n", http_date(ctx.page.modified));
-	htmlf("Expires: %s\n", http_date(ctx.page.expires));
+		html("Cache-Control: no-cache, no-store\r\n");
+	htmlf("Last-Modified: %s\r\n", http_date(ctx.page.modified));
+	htmlf("Expires: %s\r\n", http_date(ctx.page.expires));
 	if (ctx.page.etag)
-		htmlf("ETag: \"%s\"\n", ctx.page.etag);
-	html("\n");
+		htmlf("ETag: \"%s\"\r\n", ctx.page.etag);
+	html("\r\n");
 	if (ctx.env.request_method && !strcmp(ctx.env.request_method, "HEAD"))
 		exit(0);
 }

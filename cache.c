@@ -245,10 +245,10 @@ static int fill_content_length(struct cache_slot *slot)
 		return 0;
 	}
 	/* Search the end of the html header marked by empty newline */
-	headerend = strstr(slot->buf,"\n\n");
+	headerend = strstr(slot->buf,"\r\n\r\n");
 	if (headerend == NULL)
 		return 0;
-	headerlen = headerend - slot->buf + 2;
+	headerlen = headerend - slot->buf + 4;
 	bodylen = slot->cache_st.st_size - headerlen - slot->keylen - 1;
 	strbuf_addf(&buf, "Content-Length: %zd\r\n", bodylen);
 	slot->whitespacelen = WHITESPACEMAXLEN - buf.len;
